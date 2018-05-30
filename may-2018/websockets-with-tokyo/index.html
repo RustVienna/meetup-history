@@ -1,0 +1,668 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <title>Websocket Server in Rust</title>
+
+    <link rel="stylesheet" href="css/reveal.css">
+    <link rel="stylesheet" href="css/theme/beige.css">
+
+    <!-- Theme used for syntax highlighting of code -->
+    <link rel="stylesheet" href="lib/css/zenburn.css">
+
+    <!-- Printing and PDF exports -->
+    <script>
+      var link = document.createElement( 'link' );
+      link.rel = 'stylesheet';
+      link.type = 'text/css';
+      link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+      document.getElementsByTagName( 'head' )[0].appendChild( link );
+    </script>
+    <style>
+      .footer {
+        position: absolute;
+        bottom: 10px;
+        left: 0;
+        right: 0;
+        height: auto;
+        text-align: center;
+        font-size: 16pt;
+        font-family: "Lato", sans-serif;
+        font-weight: normal;
+        color: #333;
+      }
+      svg text {
+        font-family: "Lato", sans-serif;
+        font-weight: normal;
+        color: #333;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section>
+          <section>
+            <h1>Writing A Websocket Server</h1>
+            <h2>Asynchronously</h2>
+            by Andreas Monitzer
+          </section>
+          <section>
+            <h1>Overview</h1>
+            <ol>
+              <li>What is a Websocket?</li>
+              <li>Implementing a server with the ws library</li>
+              <li>What is a Future?</li>
+              <li>Implementing Websockets with Tokio</li>
+              <li>HTTP Requests with Tokio</li>
+            </ol>
+          </section>
+        </section>
+        <section>
+          <section>
+            <h1>What are Websockets?</h1>
+            <aside class="notes">
+              <ul>
+                <li>Developed for full two-way communication between the server and the client via HTTP.</li>
+                <li>Chat client, games, push notifications, caching.</li>
+                <li>Similar to TCP socket, but with initiating HTTP request that gets upgraded. Also message-oriented instead of a stream.</li>
+                <li>Needs support on the client, server and any proxies between those two.</li>
+                <li>Three options for implementation:
+                  <ol>
+                    <li>Integrated into the regular web server (like a plugin)</li>
+                    <li>Separate server that runs on a different port. Websocket is not subject to same origin policies.</li>
+                    <li>Separate server that gets reverse proxied into the regular web server (I always use that one)</li>
+                  </ol>
+                </li>
+                <li>My standard solution for web all kinds of web services.</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <h1>Long Polling</h1>
+            <svg width="650" height="240" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
+             <!-- Created with SVG-edit - http://svg-edit.googlecode.com/ -->
+             <defs>
+              <linearGradient id="svg_23">
+               <stop offset="0" stop-color="#000000"/>
+               <stop offset="1" stop-color="#ffffff"/>
+              </linearGradient>
+             </defs>
+             <g>
+              <title>Layer 1</title>
+              <rect stroke="#000000" id="svg_2" height="50" width="140" y="100" x="10" fill="url(#svg_23)"/>
+              <rect stroke="#000000" id="svg_3" height="50" width="140" y="100" x="160" fill="url(#svg_23)"/>
+              <rect stroke="#000000" id="svg_4" height="50" width="140" y="100" x="310" fill="url(#svg_23)"/>
+              <rect stroke="#000000" id="svg_5" height="50" width="140" y="100" x="460" fill="url(#svg_23)"/>
+              <g id="svg_14">
+               <text id="svg_15" xml:space="preserve" text-anchor="middle" font-family="serif" font-size="24" y="65.43629" x="299.92969" stroke-linecap="null" stroke-linejoin="null" stroke-dasharray="null" stroke-width="0" stroke="#000000" fill="#000000">Timeout</text>
+               <path id="svg_16" stroke="#000000" transform="rotate(90 298.1635131835938,82.71414184570315) " d="m294.53848,92.95577c-0.85437,-0.56958 -0.74227,-0.91449 1.33496,-4.10736c1.0489,-1.61223 1.90708,-2.97819 1.90708,-3.03545c0,-0.05726 -2.89637,-0.10411 -6.43641,-0.10411l-6.43641,0l0,-3.01955l0,-3.01955l6.48742,0c5.00217,0 6.43158,-0.09097 6.24354,-0.39731c-0.13413,-0.21852 -1.04913,-1.66858 -2.03333,-3.22236c-1.85523,-2.92889 -1.85465,-3.71435 0.00286,-3.95782c0.92442,-0.12116 15.31646,9.18806 15.81114,10.22714c-4.79386,3.7101 -10.52415,7.59363 -15.80268,11.01779c-0.27833,0 -0.76349,-0.17164 -1.07816,-0.38142l-0.00001,0z" stroke-linecap="null" stroke-linejoin="null" stroke-dasharray="null" stroke-width="null" fill="none"/>
+              </g>
+              <g id="svg_17">
+               <text id="svg_18" xml:space="preserve" text-anchor="middle" font-family="serif" font-size="24" y="65.43629" x="449.92969" stroke-linecap="null" stroke-linejoin="null" stroke-dasharray="null" stroke-width="0" stroke="#000000" fill="#000000">Timeout</text>
+               <path id="svg_19" stroke="#000000" transform="rotate(90 448.16351318359375,82.71414184570317) " d="m444.53848,92.95577c-0.85437,-0.56958 -0.74227,-0.91449 1.33496,-4.10736c1.0489,-1.61223 1.90708,-2.97819 1.90708,-3.03545c0,-0.05726 -2.89637,-0.10411 -6.43641,-0.10411l-6.43641,0l0,-3.01955l0,-3.01955l6.48742,0c5.00217,0 6.43158,-0.09097 6.24354,-0.39731c-0.13413,-0.21852 -1.04913,-1.66858 -2.03333,-3.22236c-1.85523,-2.92889 -1.85465,-3.71435 0.00286,-3.95782c0.92442,-0.12116 15.31646,9.18806 15.81114,10.22714c-4.79386,3.7101 -10.52415,7.59363 -15.80268,11.01779c-0.27833,0 -0.76349,-0.17164 -1.07816,-0.38142l-0.00001,0z" stroke-linecap="null" stroke-linejoin="null" stroke-dasharray="null" stroke-width="null" fill="none"/>
+              </g>
+              <g id="svg_13">
+               <text id="svg_21" xml:space="preserve" text-anchor="middle" font-family="serif" font-size="24" y="65.43629" x="149.92969" stroke-linecap="null" stroke-linejoin="null" stroke-dasharray="null" stroke-width="0" stroke="#000000" fill="#000000">Timeout</text>
+               <path id="svg_22" stroke="#000000" transform="rotate(90 148.16351318359378,82.71414184570314) " d="m144.53848,92.95577c-0.85437,-0.56958 -0.74227,-0.91449 1.33496,-4.10736c1.0489,-1.61223 1.90708,-2.97819 1.90708,-3.03545c0,-0.05726 -2.89637,-0.10411 -6.43641,-0.10411l-6.43641,0l0,-3.01955l0,-3.01955l6.48742,0c5.00217,0 6.43158,-0.09097 6.24354,-0.39731c-0.13413,-0.21852 -1.04913,-1.66858 -2.03333,-3.22236c-1.85523,-2.92889 -1.85465,-3.71435 0.00286,-3.95782c0.92442,-0.12116 15.31646,9.18806 15.81114,10.22714c-4.79386,3.7101 -10.52415,7.59363 -15.80268,11.01779c-0.27833,0 -0.76349,-0.17164 -1.07816,-0.38142l-0.00001,0z" stroke-linecap="null" stroke-linejoin="null" stroke-dasharray="null" stroke-width="null" fill="none"/>
+              </g>
+              <g id="svg_24">
+               <text id="svg_25" xml:space="preserve" text-anchor="middle" font-family="serif" font-size="24" y="65.43629" x="599.92969" stroke-linecap="null" stroke-linejoin="null" stroke-dasharray="null" stroke-width="0" stroke="#000000" fill="#000000">Timeout</text>
+               <path id="svg_26" stroke="#000000" transform="rotate(90 598.1635131835938,82.7141418457032) " d="m594.53848,92.95577c-0.85437,-0.56958 -0.74227,-0.91449 1.33496,-4.10736c1.0489,-1.61223 1.90708,-2.97819 1.90708,-3.03545c0,-0.05726 -2.89637,-0.10411 -6.43641,-0.10411l-6.43641,0l0,-3.01955l0,-3.01955l6.48742,0c5.00217,0 6.43158,-0.09097 6.24354,-0.39731c-0.13413,-0.21852 -1.04913,-1.66858 -2.03333,-3.22236c-1.85523,-2.92889 -1.85465,-3.71435 0.00286,-3.95782c0.92442,-0.12116 15.31646,9.18806 15.81114,10.22714c-4.79386,3.7101 -10.52415,7.59363 -15.80268,11.01779c-0.27833,0 -0.76349,-0.17164 -1.07816,-0.38142l-0.00001,0z" stroke-linecap="null" stroke-linejoin="null" stroke-dasharray="null" stroke-width="null" fill="none"/>
+              </g>
+             </g>
+            </svg>
+            <aside class="notes">
+              Old solution: long polling<br>Dirty hack, needs special server support anyways. Problems with many proxies.
+            </aside>
+          </section>
+          <section>
+            <h1>HTTP/2 Server Push</h1>
+            <aside class="notes">
+              Alternate solution for caching. Send files to the client before it knows it actually needs them. No two-way communication link.
+            </aside>
+          </section>
+        </section>
+        <!-- ws -->
+        <section>
+          <section>
+            <h1>ws Crate</h1>
+            <pre><code class="rust" data-trim data-noescape>
+              extern crate ws;
+              mod server;
+
+              fn main() {
+                ws::listen("0.0.0.0:4200", |out| {
+                  server::Server::new(out)
+                }).unwrap();
+              }
+            </code></pre>
+            <aside class="notes">
+              <ul>
+                <li>Pass a closure that generates a server object</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <pre><code class="rust" data-trim data-noescape>
+            use ws;
+            struct Server {
+              out: ws::Sender,
+            };
+            impl ws::Handler for Server {
+              fn on_open(&mut self, shake: ws::Handshake)
+                -> Result<(), ws::Error> {}
+              fn on_request(&mut self, req: &amp;ws::Request)
+                -> ws::Result<ws::Response> {}
+              fn on_close(&mut self, code: ws::CloseCode, reason: &amp;str) {}
+              fn on_message(&mut self, msg: ws::Message)
+                -> Result<(), ws::Error> {}
+              fn on_error(&mut self, err: ws::Error) {}
+            }
+            </code></pre>
+            <aside class="notes">
+              <ul>
+                <li>new() left out to improve readability</li>
+                <li>Sending via out.send</li>
+                <li>Callbacks simple enough:
+                <ul>
+                  <li>on_open when new connection was opened</li>
+                  <li>on_request when an incoming HTTP request was received that's about to be upgraded</li>
+                  <li>on_close when connection is closed (regular or due to an error)</li>
+                  <li>on_message when a message is received</li>
+                  <li>on_error when an error occurs</li>
+                </ul></li>
+                <li>But: Handling any other I/O than a websocket is not possible with this library! I needed HTTP requests.</li>
+                <li>Need a generic event loop</li>
+              </ul>
+            </aside>
+          </section>
+        </section>
+        <!-- TOKIO -->
+        <section>
+          <h1>POSIX Event Loops</h1>
+          <ul>
+            <li>select</li>
+            <li>poll</li>
+            <li>epoll</li>
+          </ul>
+          <aside class="notes">
+            <ul>
+              <li>In many programming environments (web browser, node.js, RoR, iOS, Android, dotnet, …), there is a built-in event loop running that handles events like timers and I/O</li>
+              <li>How to manage long-running processes that wait on I/O in Rust/C, which don't have a runtime? Constantly asking whether new information is available is possible, but inefficient. Blocking on reads only works for one connection per thread or process.</li>
+              <li>Similar concept on Windows, but using POSIX as example here. (explain these calls here)</li>
+              <li>epoll is Linux-specific!</li>
+              <li>List of file descriptors (network connections, IPC), returns when event occurs on any of them with info on the event.</li>
+              <li>select and poll are the same, except select gets a range of file descriptors and poll gets a list. epoll is just a more efficient version of poll (reuses its data structures).</li>
+            </ul>
+          </aside>
+        </section>
+        <section>
+          <section>
+            <h1>The Old Ways Part 1</h1>
+            <pre><code class="rust" data-trim data-noescape>
+              fn main() {
+                let socket = open_connection();
+                while !closed {
+                  poll socket;
+                  if socket.can_read() {
+                    socket.read();
+                  }
+                }
+                socket.close();
+              }
+            </code></pre>
+            <aside class="notes">
+              <ul>
+                <li>Pseudocode!</li>
+                <li>This is a PITA for an arbitrary number of connections.</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <h1>The Old Ways Part 2</h1>
+            <img src="img/bugtracking.png">
+            <aside class="notes">
+              <ul>
+                <li>Doesn't work anyways</li>
+                <li>That referenced ticket also doesn't have a solution</li>
+                <li>What is the recommended way?</li>
+                <li>Two options:
+                  <ol>
+                    <li>One thread/process per connection (BAD for thousands of connections!)</li>
+                    <li>select/poll/epoll abstraction library</li>
+                  </ol>
+                </li>
+              </ul>
+            </aside>
+          </section>
+        </section>
+        <section>
+          <h1>Enter <img style="display:inline;width:300px;margin:0;border:none;box-shadow:none;" src="img/logo-large.png"></h1>
+          <p><a href="https://tokio.rs">https://tokio.rs</a></p>
+          <aside class="notes">
+            <ul>
+              <li>tokio.rs is a crate for handling asynchronous network connections (client and server) of any protocol</li>
+              <li>It uses the Futures concept, also known as Promises in other languages (JavaScript)</li>
+            </ul>
+          </aside>
+        </section>
+        <section>
+          <section>
+            <h1>Promises in JavaScript</h1>
+            <pre><code class="javascript" data-trim data-noescape>
+              let text_promise = fetch("foo").then(result => {
+                if(result.status === 200) {
+                  return send_packet("bar");
+                }
+              }).then(result => result.text, err => {
+                console.error("Network error:", err);
+              });
+            </code></pre>
+            <aside class="notes">
+              <ul>
+                <li>Concept easier to explain in JavaScript (explain here).</li>
+                <li>Two types of returns:
+                  <ol>
+                    <li>Arbitrary data: returned from the promise in the next then() closure</li>
+                    <li>A promise: is chained</li>
+                  </ol>
+                </li>
+                <li>Not so simple in Rust, because of type checks</li>
+                <li>Also, we need a call "wait for events here", because there's no runtime in Rust</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <h1>Tokio Event Loop</h1>
+            <pre><code class="rust" data-trim data-noescape>
+              extern crate tokio_core;
+
+              fn main() {
+                let mut core = tokio_core::reactor::Core::new().unwrap();
+                // ...
+                core.run(f).unwrap();
+              }
+            </pre></code>
+            <aside class="notes">
+              <ul>
+                <li>run does all the magic. Returns only when all Futures are done.</li>
+                <li>f is the first Future handled in this event loop</li>
+              </ul>
+            </aside>
+          </section>
+          <section> <!-- TODO move somewhere else? -->
+            <h2>Manipulating Futures</h2>
+            <ul>
+              <li>map</li>
+              <li>map_err</li>
+              <li>then</li>
+              <li>and_then</li>
+              <li>or_else</li>
+              <li>select</li>
+              <li>join</li>
+            </ul>
+            <aside class="notes">
+              <ul>
+                <li>All of these except select and join have one FnOnce as parameter!</li>
+                <li>map: closure that gets one Future Item and returns another one (might be different type, changing the Future type!)</li>
+                <li>map_err: closure that gets called when an error occurs. Returns a new Error.</li>
+                <li>then: closure that gets Result&lt;Item, Error> and returns a new Future (chaining)</li>
+                <li>and_then: same as then, but Error type has to be the same an closure receives Item directly. This allows having one error handler for everything.</li>
+                <li>or_else: when Future fails, this is called. Returns new Future.</li>
+                <li>select: Join two Futures of same type, completes when one of them completes, getting its result Item or Error.</li>
+                <li>join: Join two Futures of same Error type, returning all Items in a tuple.</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <h2>Type Deconstruction</h2>
+            <pre><code class="rust" data-trim data-noescape>
+              fn then&lt;F, B>(self, f: F) -> Then&lt;Self, B, F>
+                where
+                    F: FnOnce(Result&lt;Self::Item, Self::Error>) -> B,
+                    B: IntoFuture,
+                    Self: Sized,
+
+              pub struct Then&lt;A, B, F>
+                where A: Future, B: IntoFuture, { /* fields omitted */ }
+
+              impl<A, B, F> Future for Then&lt;A, B, F>
+                where A: Future, B: IntoFuture,
+                  F: FnOnce(Result&lt;A::Item, A::Error>) -> B,
+            </pre></code>
+            <aside class="notes">
+              <ul>
+                <li>Those functions are really hard to understand in the docs</li>
+                <li>Every one of those functions mentioned returns its own struct that implements Future</li>
+                <li>Compiler error messages contain all of those types and are close to impossible to read</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <pre><code class="rust" data-trim data-noescape>
+            extern crate tokio_core;
+            use tokio::net::TcpListener;
+
+            fn main() {
+              let mut core = tokio_core::reactor::Core::new().unwrap();
+              let addr = "127.0.0.1:12345".parse().unwrap();
+              let tcp = TcpListener::bind(&amp;addr).unwrap();
+              let server = tcp.incoming().for_each(|tcp| {
+                // ...
+                Ok(())
+              });
+              core.run(server).unwrap();
+            }
+            </pre></code>
+            <aside class="notes">
+              <ul>
+                <li>Our first Future.</li>
+                <li>Promises in JavaScript are one-shot, Futures in Rust are not.</li>
+                <li>for_each calls closure over iterator of infinite length, never completes (unless there's a panic)</li>
+                <li>Futures have two types: The type of data they're transferring and an error type (similar to JavaScript version)</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <h2>Type Deconstruction</h2>
+            <pre><code class="rust" data-trim data-noescape>
+              pub fn incoming(self) -> Incoming
+            </pre></code>
+            <pre><code class="rust" data-trim data-noescape>
+            pub struct Incoming { /* fields omitted */ }
+            impl Stream for Incoming
+              type Item = tokio::net::TcpStream
+              type Error = tokio::io::Error
+
+            pub trait Stream {
+              fn into_future(self) -> StreamFuture&lt;Self> { ... }
+            }
+            </pre></code>
+            <aside class="notes">
+              <ul>
+                <li>Stream is a special kind of Future.</li>
+                <li>Incoming is a kind of Stream with TcpStream as the Item and Error as the Error.</li>
+                <li>TcpStream is the type of the tcp parameter in the example code above!</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <h2>Error Handling</h2>
+            <pre><code class="rust" data-trim data-noescape>
+              extern crate tokio_core;
+              use tokio::net::TcpListener;
+
+              fn main() {
+                let mut core = tokio_core::reactor::Core::new().unwrap();
+                let addr = "127.0.0.1:12345".parse().unwrap();
+                let tcp = TcpListener::bind(&amp;addr).unwrap();
+                let server = tcp.incoming().for_each(|tcp| {
+                  // ...
+                  Ok(())
+                }).map_err(|err| {
+                  println!("server error {:?}", err);
+                });
+                core.run(server).unwrap();
+              }
+            </pre></code>
+            <aside class="notes">
+              <ul>
+                <li>Explain map_err?</li>
+                <li>Error handling will be left out of the remaining examples to improve readability</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <h2>Streams</h2>
+            <ul>
+              <li>filter</li>
+              <li>filter_map</li>
+              <li>skip_while</li>
+              <li>take_while</li>
+              <li>for_each</li>
+              <li>forward</li>
+              <li>split</li>
+            </ul>
+            <aside class="notes">
+              <ul>
+                <li>Streams have a done state</li>
+                <li>filter: returns boolean whether to keep an Item from the stream or discard it</li>
+                <li>filter_map: as above, but also transforms the Item (returns Option&lt;Item>, can be of different type)</li>
+                <li>skip_while: skips Items until the closure returns false</li>
+                <li>take_while: iterates over Items while the closure returns true, afterwards the Stream is in done state (= closed)</li>
+                <li>for_each: iterates over Items. Returns Future&lt;(), Error>, () = Unit Type</li>
+                <li>forward: send one stream to another one</li>
+                <li>split: split bidirectional Stream into separate send Sink and receive Streams (which can be handled separately)</li>
+              </ul>
+            </aside>
+          </section>
+        </section>
+        <section>
+          <section>
+            <h1>Websocket Crate</h1>
+            <h2>Websockets using Tokio</h2>
+            <aside class="notes">
+              <ul>
+                <li>Yes, there's a ws crate and a websocket crate, and they're completely different.</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <pre><code class="rust" data-trim data-noescape>
+              let mut core = tokio_core::reactor::Core::new().unwrap();
+              let handle = core.handle();
+              let server = websocket::async::Server::bind(&amp;addr, &amp;handle).unwrap();
+              let f = server.incoming()
+                .for_each(|(upgrade, addr)| {
+                  let handle_inner = handle.clone();
+                  let f = upgrade.accept().and_then(move |(s, _)| {
+                    // next slide
+                  });
+                  handle.spawn(f);
+                });
+              core.run(f).unwrap();
+            </pre></code>
+            <aside class="notes">
+              <ul>
+                <li>(error handling left out for readability)</li>
+                <li>handle needed for adding new tasks to event loop (spawn), as shown</li>
+                <li>upgrade = upgrade HTTP request, the _ in the and_then are the headers from the upgrade request</li>
+                <li>// ... -> incoming connection is open, now what?</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <pre><code class="rust" data-trim data-noescape>
+              let f = upgrade.accept().and_then(move |(s, _)| {
+                let (sink, stream) = s.split();
+                stream.take_while(|m| Ok(!m.is_close()))
+                  .filter_map(|m| {
+                    match m {
+                      OwnedMessage::Ping(p) => Some(OwnedMessage::Pong(p)),
+                      OwnedMessage::Pong(_) => None,
+                      _ => Some(m),
+                    }
+                  })
+                  .forward(sink)
+                  .and_then(|(_, sink)| {
+                    sink.send(OwnedMessage::Close(None))
+                  })
+              });
+            </pre></code>
+            <aside class="notes">
+              <ul>
+                <li>Official example code that shows how to think in Futures</li>
+                <li>But: how to send a message from outside this Future?</li>
+              </ul>
+            </aside>
+          </section>
+        </section>
+        <section>
+          <section>
+            <img src="img/needmoredocumentation.png" style="border: 0;">
+            <aside class="notes">
+              <ul>
+                <li>So I investigated</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <img src="img/needdocumentation2.png" style="border: 0;">
+            <aside class="notes">
+              <ul>
+                <li>The only response on the ticket</li>
+                <li>The underlying problem is that the Stream can't be passed to somewhere else, because it's owned by this closure.</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <pre><code class="rust" data-trim data-noescape>
+              move |(s, _)| {
+                let (sink, stream) = s.split();
+                stream.take_while(|m| Ok(!m.is_close()))
+                  .for_each(move |m| {
+                    // next slide
+                    Ok(())
+                  })
+                  .map(move |_| {
+                    // connection is closed
+                  })
+              }
+            </pre></code>
+            <aside class="notes">
+              <ul>
+                <li>Simplified from the example code</li>
+                <li>Using for_each to consume the message received from the Stream</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <pre><code class="rust" data-trim data-noescape>
+              move |m| {
+                let tx_inner = tx.clone();
+                match m {
+                  OwnedMessage::Text(txt) => {
+                    handle_inner.spawn(
+                      tx_inner.send(OwnedMessage::Text(txt))
+                      .map(|_| {})
+                    );
+                  },
+                  _ => {},
+                };
+                Ok(())
+              }
+            </pre></code>
+            <aside class="notes">
+              <ul>
+                <li>This does the same as the example code, but is improved, because it spawns a new async task instead of using the receiving Stream's task.</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <pre><code class="rust" data-trim data-noescape>
+              let (tx, rx) = futures::sync::mpsc::channel(8);
+              let mut tx_close = tx.clone();
+
+              let writer = rx.forward(sink).and_then(|(_, sink)| {
+                sink.send(OwnedMessage::Close(None))
+              }).map(|_| {});
+              handle_inner.spawn(writer);
+            </pre></code>
+            <aside class="notes">
+              <ul>
+                <li>this belongs into the move |(s, _)| closure</li>
+                <li>mpsc::channel is an intra-process unidirectional many-to-one communication channel</li>
+                <li>tx_close: call close on this when the Websocket is closed (important, otherwise you're leaking Streams)</li>
+                <li>Now tx.clone() can be passed to other parts of the program to send messages to the Websocket</li>
+                <li>sink.send-part: This closes the Websocket when the channel is closed. Allows closing the connection from anywhere in the program.</li>
+              </ul>
+            </aside>
+          </section>
+        </section>
+        <section>
+          <section>
+            <h1>HTTP Request</h1>
+            <aside class="notes">
+              <ul>
+                <li>Back to the initial problem why I switched to Tokio: the web request</li>
+                <li>The websocket library uses hyper, an HTTP framework.</li>
+                <li>BUT: it's an old version (0.10.6, current version is 0.11.27), and using the new one in combination with the old one is not possible (conflicting types). Updating is non-trivial, because the API has changed a lot.</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <h1>Tokio-curl</h1>
+            <aside class="notes">
+              <ul>
+                <li>So I'm using tokio-curl for the requests</li>
+                <li>Wrapper for libcurl using Tokio.</li>
+              </ul>
+            </aside>
+          </section>
+          <section>
+            <pre><code class="rust" data-trim data-noescape>
+              let session = tokio_curl::Session::new(handle.clone());
+
+              let mut req = curl::easy::Easy::new();
+              req.url("https://www.rust-lang.org/").unwrap();
+              req.write_function(|data| {
+                  io::stdout().write_all(data).unwrap();
+                  Ok(data.len())
+              }).unwrap();
+              handle_inner.spawn(session.perform(req).map(move |mut res| {
+                match res.response_code() {
+                  Ok(200) => { /* ... */ },
+                  // ...
+                }
+                Ok(())
+              });
+            </pre></code>
+            <aside class="notes">
+              <ul>
+                <li>Do first line once on setup</li>
+                <li>Write closure called repeatedly until no further data is received</li>
+              </ul>
+            </aside>
+          </section>
+        </section>
+        <section>
+          <h1>Conclusion</h1>
+          <ul>
+            <li>Websockets</li>
+            <li>Event Loop</li>
+            <li>Futures</li>
+            <li>Tokio</li>
+          </ul>
+          <p>Crates: ws, futures, tokio_core, websocket, tokio_curl</p>
+          <aside class="notes">
+            <ul>
+              <li></li>
+            </ul>
+          </aside>
+        </section>
+      </div>
+    </div>
+    <div class="footer">Andreas Monitzer, Rust Meetup Vienna 2018-05-29</div>
+
+    <script src="lib/js/head.min.js"></script>
+    <script src="js/reveal.js"></script>
+
+    <script>
+      // More info about config & dependencies:
+      // - https://github.com/hakimel/reveal.js#configuration
+      // - https://github.com/hakimel/reveal.js#dependencies
+      Reveal.initialize({
+        showNotes: true,
+        dependencies: [
+          { src: 'plugin/markdown/marked.js' },
+          { src: 'plugin/markdown/markdown.js' },
+          { src: 'plugin/notes/notes.js', async: true },
+          { src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } }
+        ]
+      });
+    </script>
+  </body>
+</html>
