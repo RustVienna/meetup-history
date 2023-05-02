@@ -1,0 +1,462 @@
+:PROPERTIES:
+:ID:       5af34b29-a493-4e5c-8c57-51c1892fa295
+:END:
+#+title: Rust Meetup Talk Newtype Pattern Trait / Deref Trait
+#+email: s@stfl.dev
+#+author: Stefan Lendl
+
+* Newtype Pattern
+
+
+How to make a new type out of an existing type
+and have the compiler watch your back.
+
+* About Me
+
+
+Stefan Lendl
+
+Background in C/C++, Rust, Python, ...
+
+soon-to-be Rust Freelancer
+
+s@stfl.dev
+
+* Benefits of the Newtype Pattern
+
+
+Type checking at compile time
+
+Improve readability of the code by using type aliases
+
+Implement external traits on external types
+
+Hide implementation details of underlying type by providing an alternative API
+
+* Define Our Own Type
+
+#+name: product
+#+begin_src rust :main no
+struct Product {
+    name: String,
+    price: i32
+}
+#+end_src
+
+Many times we will be working with more than one product.
+
+#+begin_src rust :noeval
+let ps = Vec<Product>;
+#+end_src
+
+* Type Alias
+
+#+name: products_alias
+#+begin_src rust :main no
+type Products = Vec<Product>;
+#+end_src
+
+#+begin_src rust
+type Kilometers = i32;
+type Result<T> = std::result::Result<T, std::io::Error>;
+#+end_src
+
+Can by used intercangable for i32 values.
+Shortens the code for long type signatures.
+
+* Use it as a Parameter Type
+
+#+begin_src rust :include '(product products_alias)
+fn name_of_most_expensive(ps: &Products) -> Option<&str> {
+    ps.iter()  // Use Products as Vec<Product>
+      .max_by_key(|p| p.price)
+      .map(|p| &*p.name)
+}
+
+let ps = vec![
+    Product {name: String::from("Banana"), price: 1},
+    Product {name: String::from("Pizza"), price: 8},
+    Product {name: String::from("Beer"), price: 2},
+    Product {name: String::from("Mate"), price: 2},
+];
+
+println!("{:?}", name_of_most_expensive(&ps));
+#+end_src
+
+#+RESULTS:
+: Some("Pizza")
+
+* Impl a Method or Trait on Products
+:PROPERTIES:
+:ID:       7fe9689d-469e-40e0-8eb3-f6bdd19695be
+:END:
+
+#+begin_src rust :include '(product products_alias)
+impl Products {
+    fn name_of_most_expensive(&self) -> Option<&str> {
+        self.iter()
+            .max_by_key(|p| p.price)
+            .map(|p| &*p.name)
+    }
+}
+#+end_src
+
+#+begin_src rustic-compilation :hidden
+error[E0116]: cannot define inherent `impl` for a type outside of the crate where the type is defined
+#+end_src
+
+This due to the [[https://doc.rust-lang.org/book/ch10-02-traits.html#implementing-a-trait-on-a-type][orphan rule]].
+
+
+* Tuple Struct
+
+We can implement methods on tuple structs.
+
+#+name: products_impl
+#+begin_src rust :main no :noeval
+struct Products(Vec<Product>);
+
+impl Products {
+    fn name_of_most_expensive(&self) -> Option<&str> {
+        self.0
+            .iter()
+            .max_by_key(|p| p.price)
+            .map(|p| &*p.name)
+    }
+}
+#+end_src
+
+* Tuple Struct (cont.)
+
+#+begin_src rust :include '(product products_impl)
+let ps = Products(vec![
+    Product {name: String::from("Banana"), price: 1},
+    Product {name: String::from("Pizza"), price: 8},
+    Product {name: String::from("Beer"), price: 2},
+    Product {name: String::from("Mate"), price: 2},
+]);
+
+println!("{:?}", ps.name_of_most_expensive());
+#+end_src
+
+#+RESULTS:
+: Some("Pizza")
+
+* Implement External Trait
+
+#+name: products_fmt
+#+begin_src rust :main no :noeval
+use std::fmt;
+
+impl fmt::Display for Products {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}",
+               self.0
+                   .iter()
+                   .map(|p| format!("{}({}€)", p.name, p.price))
+                   .collect::<Vec<_>>()
+                   .join(", "))
+    }
+}
+#+end_src
+
+* Implement External Trait (cont.)
+
+#+begin_src rust :include '(product products_impl products_fmt)
+let ps = Products(vec![
+    Product {name: String::from("Banana"), price: 1},
+    Product {name: String::from("Pizza"), price: 8},
+    Product {name: String::from("Beer"), price: 2},
+    Product {name: String::from("Mate"), price: 2},
+]);
+
+println!("{}", ps);
+#+end_src
+
+#+RESULTS:
+: Banana(1€), Pizza(8€), Beer(2€), Mate(2€)
+
+* Using Methods of the Underlying Type
+
+#+begin_src rust :include '("product" products_impl)
+let ps = Products(vec![
+    Product {name: String::from("Banana"), price: 1},
+    Product {name: String::from("Pizza"), price: 8},
+    Product {name: String::from("Beer"), price: 2},
+    Product {name: String::from("Mate"), price: 2},
+]);
+
+let sum: i32 = ps.iter()
+                 .map(|p| p.price)
+                 .sum();
+
+println!("{}", sum);
+#+end_src
+
+#+begin_src rustic-compilation :hidden
+error[E0599]: no method named `iter` found for struct `Products` in the current scope
+  --> src/main.rs:24:19
+   |
+6  | struct Products(Vec<Product>);
+   | --------------- method `iter` not found for this struct
+...
+24 | let sum: i32 = ps.iter()
+   |                   ^^^^ method not found in `Products`
+   |
+help: one of the expressions' fields has a method of the same name
+   |
+24 | let sum: i32 = ps.0.iter()
+   |                   ++
+#+end_src
+
+* Implement Deref Trait on Products
+
+#+name: products_deref
+#+begin_src rust :main no :noeval
+use core::ops::Deref;
+
+impl Deref for Products {
+    type Target = Vec<Product>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+#+end_src
+
+* Best of Both Worlds
+
+#+begin_src rust :include '(product products_impl products_deref)
+let ps = Products(vec![
+    Product {name: String::from("Banana"), price: 1},
+    Product {name: String::from("Pizza"), price: 8},
+    Product {name: String::from("Beer"), price: 2},
+    Product {name: String::from("Mate"), price: 2},
+]);
+
+let sum: i32 = ps.iter().map(|p| p.price).sum();
+println!("{}", sum);
+
+fn name_of_most_expensive(ps: &Products) -> Option<&str> {
+    ps.iter()  // Implicit deref()
+      .max_by_key(|p| p.price)
+      .map(|p| &*p.name)
+}
+
+println!("{:?}", name_of_most_expensive(&ps));
+#+end_src
+
+#+RESULTS:
+: 13
+: Some("Pizza")
+
+* Dot Operator
+
+Dot operator implicitly calls deref on references.
+
+#+begin_src rust :include '(product)
+let p = Product {name: String::from("Banana"), price: 1};
+let pr = &p;
+
+println!("{}", p.name);
+println!("{}", pr.name);  // instead of (*pr).name
+println!("{}", p.name == pr.name);
+#+end_src
+
+#+RESULTS:
+: Banana
+: Banana
+: true
+
+* Deref Coercions
+:PROPERTIES:
+:SOURCE: https://doc.rust-lang.org/book/ch15-02-deref.html#implicit-deref-coercions-with-functions-and-methods
+:END:
+
+#+begin_quote
+Deref coercion converts a reference to a type that implements the Deref trait
+into a reference to another type.
+Deref coercion is a convenience Rust performs on arguments to functions and
+methods, and works only on types that implement the Deref trait.
+#+end_quote
+
+Use a &String and &str interchangably in parameters.
+
+#+begin_src rust
+fn i_am(name: &str) {
+    println!("I am, {name}!");
+}
+
+i_am("a &str");
+i_am(&String::from("a &String"));
+#+end_src
+
+#+RESULTS:
+: I am, a &str!
+: I am, a &String!
+
+* Deref Coercion (cont.)
+
+#+begin_src rust :include '(product products_impl products_deref)
+let ps = Products(vec![
+    Product {name: String::from("Banana"), price: 1},
+    Product {name: String::from("Pizza"), price: 8},
+    Product {name: String::from("Beer"), price: 2},
+    Product {name: String::from("Mate"), price: 2},
+]);
+
+fn name_of_most_expensive(ps: &Vec<Product>) -> Option<&str> {
+    ps.iter()  // Implicit deref()
+      .max_by_key(|p| p.price)
+      .map(|p| &*p.name)
+}
+
+println!("{:?}", name_of_most_expensive(&ps));
+#+end_src
+
+#+RESULTS:
+: Some("Pizza")
+
+* Thank you
+
+- Questions?
+
+* Bonus Slides
+* References
+
+Another word for pointer
+
+#+begin_src rust
+let a = 123;
+let b = &a;
+
+// println!("{}", a == b);
+println!("{}", a == *b);
+#+end_src
+
+#+RESULTS:
+: true
+
+* Smart Pointer
+
+Smart pointers in Rust are like act like pointers but have additional metadata and capabilities.
+
+Difference Reference - Smart Pointers
+-> while references only borrow data, in many cases, smart pointers /own/ the data they point to.
+
+- String
+- Vec<T>
+- Box<T> for allocating values on the heap
+- Rc<T>, a reference counting type that enables multiple ownership
+- Ref<T> and RefMut<T>, accessed through RefCell<T>, a type that enforces the borrowing rules at runtime instead of compile time
+
+* Storing data on the Heap with Box<T>
+
+There are two types of memory, the ~stack~ and the ~heap~.
+Stack is fast, and heap is slow because when allocating memory the program needs to ask the OS for empty space.
+
+The most straightforward smart pointer is a Box<T>, which allows you to store data on the heap.
+A pointer to the ~heap~ memory is then stored on the ~stack~.
+
+When do we need to use a smart pointer to store data on the heap:
+
+- Type whose size is not known at compile time
+  - String, Vec<T>
+- Large amount of data. Transfer ownership without copying.
+- When you want to own a value and you care only that it’s a type
+  that implements a particular trait rather than being of a specific type
+  + trait objects
+
+* Using Box<T>
+
+#+begin_src rust
+let b = Box::new(123);
+println!("{b}");
+#+end_src
+
+#+RESULTS:
+: 123
+
+Using Box<T> like a reference
+
+#+begin_src rust
+let a = 123;
+let b = Box::new(a);  // a is copied into the Box
+
+println!("{}", a == *b);
+#+end_src
+
+#+RESULTS:
+: true
+
+* Defining Our Own Smart Pointers
+
+#+name: mybox
+#+begin_src rust :main no :noeval
+pub struct MyBox<T> {
+    inner: T
+}
+
+impl<T> MyBox<T> {
+    fn new(x: T) -> MyBox<T> {
+        MyBox{inner: x}
+    }
+}
+#+end_src
+
+MyBox owns the inner data!
+
+* Dereferencing with *
+
+#+begin_src rust :include '(mybox)
+let a = 123;
+let b = MyBox::new(a);
+
+println!("{}", a == *b);
+#+end_src
+
+#+begin_src rustic-compilation :hidden
+error[E0614]: type `MyBox<{integer}>` cannot be dereferenced
+  --> src/main.rs:15:21
+   |
+15 | println!("{}", a == *b);
+   |                     ^^
+#+end_src
+
+* Treating a Type Like a Reference
+
+Implement the Deref trait
+
+#+name: mybox_deref
+#+begin_src rust :main no :noeval
+use core::ops::Deref;
+
+impl<T> Deref for MyBox<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+#+end_src
+
+deref() returns a reference to the value we want to access with the * operator
+
+* Dereferencing with *
+
+#+begin_src rust :include '(mybox mybox_deref)
+let a = 123;
+let b = MyBox::new(a);
+
+println!("{}", a == *b);
+#+end_src
+
+#+RESULTS:
+: true
+
+Behind the scenes Rust actually ran this code:
+
+#+begin_src rust :noeval
+*(b.deref())
+#+end_src
+
