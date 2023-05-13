@@ -1,0 +1,15 @@
+spin_manifest_version = "1"
+authors = ["Ch4s3r <lamprecht.patrick1@gmail.com>"]
+description = ""
+name = "fermyon-spin"
+trigger = { type = "http", base = "/" }
+version = "0.1.0"
+
+[[component]]
+id = "fermyon-spin"
+source = "target/wasm32-wasi/release/fermyon_spin.wasm"
+allowed_http_hosts = [ "https://www.rust-lang.org" ]
+[component.trigger]
+route = "/..."
+[component.build]
+command = "cargo build --target wasm32-wasi --release"

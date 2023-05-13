@@ -1,0 +1,13 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: knative-serving
+  namespace: default
+spec:
+  template:
+    spec:
+      containers:
+        - image: dev.local/knative-serving:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 3000
