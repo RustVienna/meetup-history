@@ -1,0 +1,218 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usepackage{listings}
+\usepackage{ulem}
+\usepackage{minted} % unlike listings, this support Rust
+\usemintedstyle{native}
+\usepackage{alltt}
+
+% \usepackage{qrcode} doesn't work easily with white-on-black
+
+\usepackage{url}
+\usepackage[utf8]{inputenc}
+
+\usecolortheme{albatross} % easiest base for white-on-black
+\setbeamercolor{titlelike}{bg=black,fg=white}
+\setbeamercolor{normal text}{bg=black,fg=white}
+
+\title{Embedded Rust, by example of RIOT-OS applications}
+\author{Christian Amsüss \url{<chrysn@fsfe.org>}}
+\subtitle{An update on the 2018-11-27 meetup presentation}
+\date{2023-05-25} % \st{2018-11-27} 
+
+\titlegraphic{
+  \centering
+  \raisebox{-0.2cm}{\includegraphics[width=2cm]{rust-embedded.pdf}\hspace*{1cm}}~%
+  \raisebox{0.5cm}{\includegraphics[width=2cm]{riot.pdf}}
+}
+
+\newcommand{\crate}[1]{\texttt{\href{https://crates.io/crates/#1}{#1}}}
+
+\usepackage{tikz}
+
+\newcommand{\fullimage}[1]{
+    % full-screen page from https://tex.stackexchange.com/questions/3915/image-on-full-slide-in-beamer-package#3927
+    { % all template changes are local to this group.
+        \begin{frame}[plain]
+            \begin{tikzpicture}[remember picture,overlay]
+                \node[at=(current page.center)] {
+                    \includegraphics[height=\paperheight]{#1}
+                };
+            \end{tikzpicture}
+         \end{frame}
+    }
+}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\begin{frame}{Embedded Devices}
+  \begin{itemize}
+    \item 10kB -- 1MB ROM
+    \item 1kB -- 100kB RAM
+    \item Typical hardware: ARM Cortex-M3, eg. STM32
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Embedded Devices}
+  \begin{itemize}
+    \item allocation: static or on stack
+    \item Someone needs to initialize the RAM
+    \item CPU specific linker scripts
+    \item Software shipped via hardware debugger or using a bootloader
+  \end{itemize}
+\end{frame}
+
+% \begin{frame}{Embedded Devices: On-board peripherals}
+%   \begin{itemize}
+%     \item Clock(s)
+%     \item UARTs (eg. console)
+%     \item GPIO pins (eg. LEDs, buttons)
+%     \item SPI (eg. to access SD cards)
+%   \end{itemize}
+% 
+%   need to be set up, need drivers / file systems
+% \end{frame}
+% 
+% 
+% \begin{frame}{}
+%   \center\Huge{Why Rust?}
+% \end{frame}
+% 
+% \begin{frame}{}
+%   \center\Huge{Why not?}
+% \end{frame}
+% 
+% \begin{frame}{Why Rust: My personal selection}
+%   \begin{itemize}
+%     \item Fearless development
+%     \item Reusing code throughout the infrastructure
+%   \end{itemize}
+% \end{frame}
+% 
+% 
+% \begin{frame}
+%   \center\Huge{\texttt{no\_std}}
+% \end{frame}
+
+\begin{frame}{Options 1: Bare metal}
+  \begin{itemize}
+    \item \crate{cortex-m-rt}
+    \item peripherals wrapped from \crate{svd2rust} (eg. \crate{rp2040-pac})
+    \item device drivers (eg. \crate{rp2040-hal})
+    \item board support crate (eg. \crate{rp-pico})
+  \end{itemize}
+
+  See \crate{rp-pico} crate for examples (eg. ``blinky'')
+\end{frame}
+
+\begin{frame}{Options 2: Rust operating systems or frameworks}
+    \begin{itemize}
+      \item \crate{rtic} has highly performant and precise descriptive concurrency
+      \item \crate{embassy} is a framework focused on asynchronous processing
+      \item TockOS is a full operating system
+      \item 2018: Limited hardware support and networking
+      \item 2023: Much better, but still not quite there
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Options 3: RIOT-OS}
+    \begin{itemize}
+      \item Operating system written in C
+      \item Trusted processes (cooperative or preemtive)
+      \item Mature network stack
+      \item Large community
+      \item Good hardware support
+    \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \center\Huge{Which to pick?}
+\end{frame}
+
+\begin{frame}
+  \center\Huge{Does it matter?}
+\end{frame}
+\begin{frame}{}
+    \huge \center RIOT Operating System
+
+    \center \includegraphics[width=8cm]{riot.pdf}
+
+    \Large \center \url{https://riot-os.org}
+\end{frame}
+
+\fullimage{stack-c.pdf}
+
+\fullimage{stack-rust.png}
+
+\begin{frame}[fragile]{Build system integration}
+  \small
+  \begin{alltt}
+    {\color{gray}$} make BOARD=stk3700 all flash term
+    make -C ./RIOT/boards/stk3700
+    ...
+    make -C ./RIOT/cpu/cortexm_common/periph
+    RIOT_CFLAGS="-D... -I ..." cargo build --target arm-... --release
+    {\color{green}Compiling} riot-sys v0.2.2
+    {\color{green}...}
+    {\color{green}Compiling} demo v0.1.0
+        {\color{green}Finished} release [optimized + debuginfo] target(s) in 1m 09s
+    arm-none-eabi-gcc .../*.o target/.../libdemo.a -o bin/demo.elf
+    ### Flashing Target ###
+    
+    main(): This is RIOT! (Version: ...)
+    Hello, world!
+    >
+  \end{alltt}
+\end{frame}
+
+\begin{frame}[fragile]{Application setup}
+  \small
+  \begin{minted}{rust}
+    #![no_std]
+
+    use riot_wrappers::{riot_main, i2c};
+    use embedded_hal::blocking::i2c::WriteRead as _;
+    use si7021::*;
+
+    fn main() {
+        let bus = i2c::I2CDevice(0);
+
+        let mut sensor = Si7021::new(i2c, SI7021_I2C_ADDRESS);
+
+        ...
+    }
+
+    riot_main!(main);
+  \end{minted}
+\end{frame}
+
+\begin{frame}{Open issues}
+  \Large
+  \begin{itemize}
+    \item \sout{Header files with \texttt{static inline} vs. bindgen}
+    \item no constant propagation across languages
+    \item API mappings are incomplete
+    \item \sout{Not enough users ;-)}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{}
+    Thanks for your attention
+
+    \vspace{1cm}
+
+    Slides and more links on \url{https://github.com/RustVienna/meetup-history/tree/master/2023-05/rust-on-riot/}
+
+    \bigskip
+    \center \includegraphics[width=3.2cm]{qr.eps}
+
+    \bigskip
+  % FIXME: why is there no \thetitlegraphic?
+  \centering
+  \raisebox{-0.2cm}{\includegraphics[width=2cm]{rust-embedded.pdf}\hspace*{1cm}}~%
+  \raisebox{0.5cm}{\includegraphics[width=2cm]{riot.pdf}}
+\end{frame}
+
+\end{document}
