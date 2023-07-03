@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Slide numbers 9, 10, 11, 12 Copyright Robert Nystrom, used under the fair use clause
+# SPDX-FileCopyrightText: Slide numbers 7 and 8 Copyright Wikipedia
+# SPDX-FileCopyrightText: Remaining slides Copyright Sagar Kale
+#
+# SPDX-License-Identifier: CC-BY-SA-4.0
+#
+# Slide numbers 5, 6, 9, 10, 11, 12, 13 taken from the book Crafting Interpreters and accompanying materials, therefore © Robert Nystrom.
+See https://github.com/munificent/craftinginterpreters/blob/master/LICENSE
+# 
+# Material from the above book on slide numbers 9, 10, 11, and 12 is licenced under Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC BY-NC-ND 4.0) license https://creativecommons.org/licenses/by-nc-nd/4.0/ and is being used under the fair use clause in that license.
+# 
+# Material from the repository for the book that appears on slide numbers 5, 6, and 13 is already licensed under the MIT license, hence it can be sublicensed.
+#
+# Slide numbers 7 and 8 are from a Wikipedia page ( https://en.wikipedia.org/wiki/Abstract_syntax_tree ) that uses Creative Commons Attribution-ShareAlike License 4.0 https://creativecommons.org/licenses/by-sa/4.0/ , hence it can be sublicensed under the same license.
+#
+# In summary, all slides except numbers 9, 10, 11, and 12 are licensed under Creative Commons Attribution-ShareAlike License 4.0 https://creativecommons.org/licenses/by-sa/4.0/ by the author.
