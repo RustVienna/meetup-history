@@ -1,3 +1,1 @@
-![Slides preview](smallslides.png)
-
-[Slides](slides.pdf)
+[![Slides preview](smallslides.png)](slides.pdf)
