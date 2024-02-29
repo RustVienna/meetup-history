@@ -16,7 +16,7 @@ pdfpcnotes.sty:
 	wget -O$@ https://github.com/cebe/pdfpc-latex-notes/raw/master/pdfpcnotes.sty
 
 smallslides.png: slides.pdf
-	gm convert -density 300 $<[10] -resize 25%% $@
+	gm convert -density 300 $<[9] -resize 25%% $@
 
 %.pdf: %.svg
 	inkscape $< --export-filename $@
